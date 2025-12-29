@@ -1,0 +1,10 @@
+{
+  "entry": "static",
+  "functions": "functions",
+  "routes": [
+    {
+      "entry": "index.html",
+      "route": "/"
+    }
+  ]
+}
