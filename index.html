@@ -1,0 +1,866 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>ESA AI Agent 白板 | V7.0 深度融合版</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://js.pusher.com/8.2.0/pusher.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+    
+    <style>
+        :root { --primary: #4361ee; --bg-panel: #ffffff; --text-main: #212529; --border: #e0e0e0; --tool-active: #eef2ff; }
+        [data-theme="dark"] { --primary: #5c7cfa; --bg-panel: #1e1e1e; --text-main: #e0e0e0; --border: #333333; --tool-active: #262626; }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', sans-serif; user-select: none; -webkit-user-select: none; }
+        input, textarea { user-select: text !important; -webkit-user-select: text !important; pointer-events: auto !important; }
+        
+        body { background: var(--bg-panel); color: var(--text-main); height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+        
+        header { 
+            background: linear-gradient(to right, #4361ee, #3a0ca3); color: white; padding: 0 20px; height: 50px; 
+            display: flex; justify-content: space-between; align-items: center; z-index: 100; box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .main-container { display: flex; flex: 1; overflow: hidden; }
+        
+        .toolbar { 
+            width: 300px; background: var(--bg-panel); border-right: 1px solid var(--border); 
+            padding: 15px; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; z-index: 90;
+        }
+        .tool-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+        .tool-grid.colors { grid-template-columns: repeat(6, 1fr); gap: 8px; }
+        .tool-group-title { font-size: 0.75rem; color: #888; margin-bottom: 5px; font-weight: bold; letter-spacing: 0.5px; }
+        
+        .btn-tool { 
+            height: 36px; border: 1px solid transparent; background: transparent; border-radius: 6px; cursor: pointer; 
+            color: var(--text-main); font-size: 1.1rem; transition: all 0.1s; position: relative;
+        }
+        .btn-tool:hover { background: rgba(0,0,0,0.05); transform: translateY(-1px); }
+        .btn-tool.active { background: var(--tool-active); color: var(--primary); border-color: var(--primary); box-shadow: 0 2px 5px rgba(67, 97, 238, 0.15); }
+        .btn-tool[data-tool="select"].active { background: #e3f2fd; color: #1565c0; border-color: #1565c0; }
+        .btn-tool[data-tool="hand"].active { background: #fff3e0; color: #e65100; border-color: #e65100; }
+
+        .color-dot { width: 100%; aspect-ratio: 1; border-radius: 4px; cursor: pointer; border: 2px solid transparent; }
+        .color-dot.active { border-color: var(--text-main); transform: scale(1.15); box-shadow: 0 0 0 2px var(--bg-panel); }
+
+        .canvas-area { flex: 1; position: relative; overflow: hidden; background: var(--bg-panel); cursor: crosshair; }
+        canvas { display: block; width: 100%; height: 100%; }
+        
+        #textInput {
+            position: absolute; display: none; z-index: 100; background: rgba(255,255,255,0.95); 
+            border: 2px solid var(--primary); padding: 4px 8px; font-family: 'Segoe UI'; 
+            min-width: 50px; outline: none; box-shadow: 0 4px 15px rgba(0,0,0,0.2); border-radius: 4px;
+        }
+
+        .hud-panel {
+            position: absolute; background: var(--bg-panel); border: 1px solid var(--border);
+            padding: 6px 12px; border-radius: 20px; font-size: 0.8rem; pointer-events: none; z-index: 100;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .zoom-info { bottom: 20px; left: 20px; }
+        .status-bar { bottom: 20px; right: 20px; }
+
+        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.4); z-index: 1000; justify-content: center; align-items: center; backdrop-filter: blur(3px); }
+        .modal-box { background: var(--bg-panel); padding: 25px; border-radius: 12px; width: 600px; text-align: left; box-shadow: 0 20px 50px rgba(0,0,0,0.3); max-height: 80vh; overflow-y: auto; position: relative; }
+        .modal-close { position: absolute; top: 15px; right: 15px; cursor: pointer; font-size: 1.2rem; color: #999; }
+        
+        .tpl-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 20px 0; }
+        .tpl-card { border: 1px solid var(--border); border-radius: 8px; padding: 15px; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 8px; transition: 0.2s; text-align: center; }
+        .tpl-card:hover { border-color: var(--primary); background: var(--tool-active); transform: translateY(-3px); }
+        .tpl-card i { font-size: 1.5rem; color: var(--text-main); }
+
+        .help-list li { margin-bottom: 10px; line-height: 1.6; }
+        .key-tag { background: #eee; padding: 2px 6px; border-radius: 4px; font-family: monospace; font-weight: bold; border: 1px solid #ccc; font-size: 0.85em; }
+
+        /* AI 界面样式 */
+        .ai-input-wrapper { margin-bottom: 15px; }
+        .ai-input { width: 100%; padding: 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-panel); color: var(--text-main); font-size: 1rem; resize: vertical; outline: none; }
+        .ai-input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(67, 97, 238, 0.1); }
+        .ai-btn { width: 100%; padding: 12px; background: linear-gradient(135deg, #4361ee, #3a0ca3); color: white; border: none; border-radius: 8px; font-size: 1rem; cursor: pointer; font-weight: bold; display: flex; justify-content: center; align-items: center; gap: 8px; transition: 0.2s; }
+        .ai-btn:hover { opacity: 0.9; transform: translateY(-1px); }
+        .ai-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+        
+        /* 模式切换 */
+        .ai-mode-tabs { display: flex; gap: 10px; margin-bottom: 15px; }
+        .ai-tab { flex: 1; padding: 8px; border: 1px solid var(--border); text-align: center; border-radius: 6px; cursor: pointer; font-size: 0.9rem; }
+        .ai-tab.active { background: var(--tool-active); color: var(--primary); border-color: var(--primary); font-weight: bold; }
+    </style>
+</head>
+<body>
+    <header>
+        <h3><i class="fas fa-brain"></i> ESA AI Agent <small style="font-size: 0.6em; opacity: 0.8;">V7.0</small></h3>
+        <div>
+            <button onclick="showAIModal()" style="cursor: pointer; background: white; color: var(--primary); border:none; padding:6px 12px; border-radius:4px; margin-right: 10px; font-weight: bold;">
+                <i class="fas fa-robot"></i> 呼叫 DeepSeek
+            </button>
+            <button onclick="showHelpModal()" style="cursor: pointer; background: rgba(255,255,255,0.2); border:none; color:white; padding:6px 12px; border-radius:4px; margin-right: 10px;">
+                <i class="fas fa-question-circle"></i> 帮助
+            </button>
+            <button onclick="copyLink()" title="复制链接邀请他人" style="cursor: pointer; background: rgba(255,255,255,0.2); border:none; color:white; padding:6px 12px; border-radius:4px;">
+                <i class="fas fa-share-alt"></i>
+            </button>
+            <button onclick="toggleTheme()" style="margin-left:10px; background:transparent; border:none; color:white; font-size:1.2rem; cursor:pointer;"><i class="fas fa-adjust"></i></button>
+            <button onclick="exportImage()" style="margin-left:10px; background:white; border:none; color:#4361ee; padding:6px 12px; border-radius:4px; cursor:pointer; font-weight:bold;">导出</button>
+        </div>
+    </header>
+
+    <div class="main-container">
+        <div class="toolbar">
+            <div class="tool-grid" style="grid-template-columns: 1fr 1fr 1fr;">
+                <button class="btn-tool" onclick="historyUndo()" title="撤销"><i class="fas fa-undo"></i></button>
+                <button class="btn-tool" onclick="historyRedo()" title="重做"><i class="fas fa-redo"></i></button>
+                <button class="btn-tool" onclick="clearBoard()" title="清空" style="color:#f00;"><i class="fas fa-trash"></i></button>
+            </div>
+            
+            <div class="tool-group-title" style="color:var(--primary); margin-top:5px;">交互模式</div>
+            <div class="tool-grid" style="grid-template-columns: 1fr 1fr;">
+                <button class="btn-tool" data-tool="select" onclick="setTool('select', this)" title="选择/移动"><i class="fas fa-mouse-pointer"></i></button>
+                <button class="btn-tool" data-tool="hand" onclick="setTool('hand', this)" title="抓手 (拖动画布)"><i class="fas fa-hand-paper"></i></button>
+            </div>
+
+            <div class="tool-group-title">基础绘图</div>
+            <div class="tool-grid">
+                <button class="btn-tool active" onclick="setTool('pencil', this)" title="画笔"><i class="fas fa-pencil-alt"></i></button>
+                <button class="btn-tool" onclick="setTool('eraser', this)" title="橡皮"><i class="fas fa-eraser"></i></button>
+                <button class="btn-tool" onclick="setTool('text_free', this)" title="文本框"><i class="fas fa-font"></i></button>
+                <button class="btn-tool" onclick="document.getElementById('imgUpload').click()" title="插入图片"><i class="far fa-image"></i></button>
+            </div>
+            <input type="file" id="imgUpload" accept="image/*" style="display: none;" onchange="handleImageUpload(this)">
+
+            <div class="tool-group-title">几何图形 (Shift绘制正形)</div>
+            <div class="tool-grid" style="grid-template-columns: repeat(4, 1fr);">
+                <button class="btn-tool" onclick="setTool('line', this)" title="直线"><i class="fas fa-slash"></i></button>
+                <button class="btn-tool" onclick="setTool('arrow', this)" title="箭头"><i class="fas fa-long-arrow-alt-right"></i></button>
+                <button class="btn-tool" onclick="setTool('rect', this)" title="矩形"><i class="far fa-square"></i></button>
+                <button class="btn-tool" onclick="setTool('circle', this)" title="圆形"><i class="far fa-circle"></i></button>
+                <button class="btn-tool" onclick="setTool('triangle', this)" title="三角形"><i class="fas fa-caret-up"></i></button>
+                <button class="btn-tool" onclick="setTool('diamond', this)" title="菱形"><i class="fas fa-gem"></i></button>
+                <button class="btn-tool" onclick="setTool('star', this)" title="五角星"><i class="fas fa-star"></i></button>
+                <button class="btn-tool" onclick="setTool('hexagon', this)" title="六边形"><i class="fas fa-cube"></i></button>
+            </div>
+
+            <div class="tool-group-title">思维导图图章</div>
+            <div class="tool-grid" style="grid-template-columns: repeat(4, 1fr);">
+                <button class="btn-tool" onclick="setTool('stamp_root', this)" title="中心主题"><i class="fas fa-bullseye"></i></button>
+                <button class="btn-tool" onclick="setTool('stamp_node', this)" title="子节点"><i class="far fa-square"></i></button>
+                <button class="btn-tool" onclick="setTool('stamp_decision', this)" title="判定"><i class="far fa-gem"></i></button>
+                <button class="btn-tool" onclick="setTool('stamp_data', this)" title="数据"><i class="fas fa-vector-square" style="transform: skewX(-10deg);"></i></button>
+            </div>
+            <div class="tool-grid" style="margin-top: 5px;">
+                <button class="btn-tool" onclick="setTool('stamp_check', this)" title="标记"><i class="fas fa-check-square"></i></button>
+            </div>
+
+            <div class="tool-group-title">色彩库</div>
+            <div class="tool-grid colors" id="colorPalette"></div>
+            <input type="range" min="1" max="40" value="3" id="sizeSlider" style="width: 100%; margin-top:8px;" title="大小调节">
+            
+            <button class="btn-tool" onclick="showTemplateModal()" style="width: 100%; margin-top: auto; font-size: 0.9rem;">
+                <i class="fas fa-layer-group"></i> 更换背景
+            </button>
+        </div>
+
+        <div class="canvas-area" id="canvasContainer">
+            <canvas id="mainCanvas"></canvas>
+            <textarea id="textInput"></textarea>
+            <div class="hud-panel zoom-info">缩放: <span id="zoomDisplay">100%</span></div>
+            <div class="hud-panel status-bar">状态: <span id="statusText">连接中...</span> | ID: <span id="roomIdDisplay">...</span></div>
+        </div>
+    </div>
+
+    <div id="tplModal" class="modal-overlay">
+        <div class="modal-box">
+            <span class="modal-close" onclick="closeAllModals()">&times;</span>
+            <h3>选择白板背景</h3>
+            <div class="tpl-grid" id="tplGrid"></div>
+        </div>
+    </div>
+
+    <div id="helpModal" class="modal-overlay">
+        <div class="modal-box">
+            <span class="modal-close" onclick="closeAllModals()">&times;</span>
+            <h3><i class="fas fa-book"></i> 操作说明书</h3>
+            <ul class="help-list">
+                <li><span class="key-tag" style="background:#e3f2fd; color:#1565c0; border-color:#1565c0;">多人协作</span> <b>复制链接</b> (点击右上角分享图标) 发送给好友。只要大家都在同一个房间 ID 下，你画的每一笔，对方都能<b>实时看见</b>！</li>
+                <li><span class="key-tag">呼叫 DeepSeek</span> 现在的 AI 可以<b>自动画图</b>和<b>生成整棵思维导图</b>了！点击顶部按钮，无需输入 Key，直接提问即可。</li>
+                <li><span class="key-tag">左键拖拽</span> <b>抓手模式</b>下，按住鼠标左键可自由拖动画布。</li>
+                <li><span class="key-tag">滚轮</span> 上下滚动鼠标滚轮可缩放画布。</li>
+                <li><span class="key-tag">选中物体</span> 切换到<b>选择模式</b> (箭头图标)，点击线条、形状或文字即可选中。</li>
+                <li><span class="key-tag">Del</span> 或 <span class="key-tag">Backspace</span> 删除当前选中的物体。</li>
+                <li><span class="key-tag">Shift</span> 绘制图形时按住 Shift 可锁定正方形/正圆/水平线。</li>
+            </ul>
+        </div>
+    </div>
+
+    <div id="aiModal" class="modal-overlay">
+        <div class="modal-box">
+            <span class="modal-close" onclick="closeAllModals()">&times;</span>
+            <h3><i class="fas fa-robot"></i> DeepSeek 智能代理</h3>
+            
+            <div class="ai-mode-tabs">
+                <div class="ai-tab active" onclick="switchAIMode('mindmap')" id="tab-mindmap"><i class="fas fa-project-diagram"></i> 生成完整导图</div>
+                <div class="ai-tab" onclick="switchAIMode('draw')" id="tab-draw"><i class="fas fa-paint-brush"></i> AI 矢量绘图</div>
+            </div>
+
+            <div class="ai-input-wrapper">
+                <textarea id="aiPrompt" class="ai-input" rows="4" placeholder="例如：帮我生成一个关于'Python学习路线'的思维导图..."></textarea>
+            </div>
+
+            <button class="ai-btn" id="btnAskAI" onclick="askDeepSeekAgent()">
+                <span id="aiBtnText"><i class="fas fa-bolt"></i> 立即执行</span>
+                <i class="fas fa-spinner fa-spin" id="aiSpinner" style="display: none;"></i>
+            </button>
+            
+            <div id="aiError" style="display:none; margin-top: 15px; color: #f44336; font-size: 0.9rem; background: #fff0f0; padding: 10px; border-radius: 6px;"></div>
+            <div class="ai-disclaimer">Powered by DeepSeek-V3 (JSON & SVG Mode)</div>
+        </div>
+    </div>
+
+    <script>
+        // ================= 配置区 =================
+        const ROOM_ID = new URLSearchParams(window.location.search).get('id') || Math.random().toString(36).substr(2, 6).toUpperCase();
+        if (!window.location.search) window.history.replaceState(null, '', `?id=${ROOM_ID}`);
+        document.getElementById('roomIdDisplay').innerText = ROOM_ID;
+
+        const PUSHER_CONFIG = {
+            app_id: "2095340", key: "0b75ced961a429149cf4", secret: "648402e7bd84a585ba72", cluster: "ap1",
+            channel: "private-board-" + ROOM_ID
+        };
+
+        const COLORS = [
+            '#000000', '#434343', '#666666', '#999999', '#CCCCCC', '#FFFFFF',
+            '#f44336', '#e91e63', '#9c27b0', '#673ab7', '#3f51b5', '#2196f3',
+            '#03a9f4', '#00bcd4', '#009688', '#4caf50', '#8bc34a', '#ffeb3b',
+            '#ffc107', '#ff9800', '#ff5722', '#795548', '#607d8b', '#000000'
+        ];
+        
+        const TEMPLATES = [
+            {id: 'blank', name: '纯净画布', icon: 'far fa-file'},
+            {id: 'dot', name: '点阵辅助', icon: 'fas fa-braille'},
+            {id: 'grid', name: '标准网格', icon: 'fas fa-border-all'},
+            {id: 'engineering', name: '工程蓝图', icon: 'fas fa-drafting-compass'},
+            {id: 'mind', name: '导图中心', icon: 'fas fa-bullseye'},
+            {id: 'swot', name: 'SWOT四象限', icon: 'fas fa-th-large'}
+        ];
+
+        // ================= 核心状态 =================
+        const state = {
+            userId: 'u_' + Math.floor(Math.random() * 99999),
+            pusher: null, channel: null,
+            scale: 1, offsetX: 0, offsetY: 0, dpr: window.devicePixelRatio || 1,
+            tool: 'pencil', color: '#000000', size: 3,
+            isDrawing: false, isPanning: false, isDragging: false, isResizing: false,
+            lastX: 0, lastY: 0, startX: 0, startY: 0,
+            history: [], redoStack: [], pointsBuffer: [], selectedId: null,
+            currentTemplate: 'dot', theme: 'light', images: {},
+            aiMode: 'mindmap' // 'mindmap' or 'draw'
+        };
+
+        const mainCanvas = document.getElementById('mainCanvas');
+        const ctx = mainCanvas.getContext('2d', { alpha: false });
+        const textInput = document.getElementById('textInput');
+
+        // ================= 初始化 =================
+        window.onload = () => {
+            initUI();
+            initPusher();
+            resizeCanvas();
+            window.addEventListener('resize', resizeCanvas);
+            mainCanvas.addEventListener('mousedown', handleMouseDown);
+            window.addEventListener('mousemove', handleMouseMove);
+            window.addEventListener('mouseup', handleMouseUp);
+            mainCanvas.addEventListener('wheel', handleWheel, {passive: false});
+            
+            document.addEventListener('keydown', handleKeyDown);
+            textInput.addEventListener('blur', finalizeTextEntry);
+            textInput.addEventListener('keydown', e => { if(e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); finalizeTextEntry(); }});
+
+            requestAnimationFrame(renderLoop);
+        };
+
+        function resizeCanvas() {
+            const container = document.getElementById('canvasContainer');
+            const w = container.clientWidth; const h = container.clientHeight;
+            mainCanvas.width = w * state.dpr; mainCanvas.height = h * state.dpr;
+            mainCanvas.style.width = w + 'px'; mainCanvas.style.height = h + 'px';
+            ctx.scale(state.dpr, state.dpr);
+        }
+
+        function toWorld(sx, sy) { return { x: (sx - state.offsetX) / state.scale, y: (sy - state.offsetY) / state.scale }; }
+        function toScreen(wx, wy) { return { x: wx * state.scale + state.offsetX, y: wy * state.scale + state.offsetY }; }
+
+        // ================= V7.0 AI 深度融合逻辑 (安全模式) =================
+        function switchAIMode(mode) {
+            state.aiMode = mode;
+            document.querySelectorAll('.ai-tab').forEach(el => el.classList.remove('active'));
+            document.getElementById('tab-' + mode).classList.add('active');
+            const prompt = document.getElementById('aiPrompt');
+            prompt.placeholder = mode === 'mindmap' ? 
+                "例如：生成一个关于'Python学习路线'的思维导图..." : 
+                "例如：画一只简单的线条小狗，或者画一个火箭图标...";
+        }
+
+        async function askDeepSeekAgent() {
+            const prompt = document.getElementById('aiPrompt').value.trim();
+            const btn = document.getElementById('btnAskAI');
+            const spinner = document.getElementById('aiSpinner');
+            const errorEl = document.getElementById('aiError');
+
+            if (!prompt) { alert("请输入内容"); return; }
+
+            btn.disabled = true; 
+            spinner.style.display = 'inline-block'; 
+            errorEl.style.display = 'none';
+
+            try {
+                let systemPrompt = "";
+                if (state.aiMode === 'mindmap') {
+                    systemPrompt = `你是一个思维导图生成助手。请根据用户的主题，生成一个JSON格式的思维导图数据。
+格式要求：必须是合法的JSON对象，包含 'root' 对象，'root' 包含 'text' 和 'children' 数组。
+例如：{"root": {"text": "主题", "children": [{"text": "分支1", "children": []}, {"text": "分支2"}]}}
+不要返回任何 Markdown 代码块标记（如 \`\`\`json），只返回纯文本 JSON。层级不要超过3层，总节点数控制在10-15个以内。`;
+                } else {
+                    systemPrompt = `你是一个 SVG 矢量绘图助手。请根据用户描述，生成一段 SVG 代码。
+要求：
+1. 必须是合法的 <svg> 代码，包含 xmlns 属性。
+2. 线条颜色请使用黑色 (#000)，背景透明。
+3. 风格为简洁的线条画 (Line Art) 或图标风格。
+4. 宽度和高度设定为 200x200。
+5. 不要返回任何 Markdown 标记，只返回 SVG 代码字符串。`;
+                }
+
+                // 修改点：使用 /api/ai 而不是 /ai
+                const response = await fetch("/api/ai", {
+                    method: "POST",
+                    headers: { 
+                        "Content-Type": "application/json",
+                        "Accept": "application/json"
+                    },
+                    body: JSON.stringify({
+                        model: "deepseek-v3",
+                        messages: [
+                            { role: "system", content: systemPrompt },
+                            { role: "user", content: prompt }
+                        ],
+                        stream: false,
+                        temperature: 0.7,
+                        max_tokens: 2000
+                    })
+                });
+
+                if (!response.ok) {
+                    let errText = "";
+                    try {
+                        errText = await response.text();
+                    } catch {
+                        errText = "请求失败，状态码：" + response.status;
+                    }
+                    throw new Error(errText);
+                }
+
+                const data = await response.json();
+                
+                // DeepSeek 的响应结构可能需要调整
+                let content = data.choices?.[0]?.message?.content || 
+                              data.output?.choices?.[0]?.message?.content ||
+                              data.result?.output?.text ||
+                              "";
+                
+                if (!content) {
+                    throw new Error("AI 返回了空内容");
+                }
+                
+                content = content.trim();
+                content = content.replace(/```json/g, '')
+                                 .replace(/```svg/g, '')
+                                 .replace(/```xml/g, '')
+                                 .replace(/```/g, '');
+
+                const centerScreen = { x: mainCanvas.clientWidth / 2, y: mainCanvas.clientHeight / 2 };
+                const centerWorld = toWorld(centerScreen.x, centerScreen.y);
+
+                if (state.aiMode === 'mindmap') {
+                    try {
+                        const mindMapData = JSON.parse(content);
+                        generateMindMapOnCanvas(mindMapData.root, centerWorld.x, centerWorld.y);
+                    } catch (e) {
+                        throw new Error("DeepSeek 生成的 JSON 格式有误：" + e.message);
+                    }
+                } else {
+                    if (content.indexOf('<svg') === -1) throw new Error("AI 未返回有效的 SVG 代码");
+                    const svgBase64 = "data:image/svg+xml;base64," + btoa(unescape(encodeURIComponent(content)));
+                    addAction({
+                        type: 'image', image: svgBase64,
+                        x: centerWorld.x, y: centerWorld.y, w: 200, h: 200, id: Date.now()
+                    });
+                }
+
+                closeAllModals();
+                document.getElementById('aiPrompt').value = '';
+
+            } catch (err) {
+                console.error("AI 请求失败:", err);
+                errorEl.innerText = "执行失败: " + err.message;
+                errorEl.style.display = 'block';
+            } finally {
+                btn.disabled = false; 
+                spinner.style.display = 'none';
+            }
+        }
+
+        // 递归生成思维导图
+        function generateMindMapOnCanvas(node, x, y, level = 0, parentId = null) {
+            const id = Date.now() + Math.random();
+            const nodeWidth = 120;
+            const nodeHeight = 40;
+            
+            // 绘制当前节点
+            addAction({
+                type: 'stamp',
+                tool: level === 0 ? 'stamp_root' : 'stamp_node',
+                x: x, y: y,
+                color: level === 0 ? '#4361ee' : '#212529',
+                text: node.text,
+                id: id
+            });
+
+            // 绘制连线 (如果有父节点)
+            if (parentId) {
+                // 简单的连线逻辑
+            }
+
+            if (node.children && node.children.length > 0) {
+                const totalChildren = node.children.length;
+                const angleStep = Math.PI / 3; // 扇形展开
+                const radius = 180; // 子节点距离
+                
+                node.children.forEach((child, index) => {
+                    let childX, childY;
+                    if (level === 0) {
+                        const angle = (index / totalChildren) * Math.PI * 2;
+                        childX = x + Math.cos(angle) * radius * 1.5;
+                        childY = y + Math.sin(angle) * radius * 1.5;
+                    } else {
+                        childX = x + (index - (totalChildren-1)/2) * 140;
+                        childY = y + 120;
+                    }
+                    
+                    addAction({
+                        type: 'shape', tool: 'line',
+                        x1: x, y1: y + (level===0?20:20),
+                        x2: childX, y2: childY - 20,
+                        color: '#ccc', size: 2, id: Date.now() + Math.random()
+                    });
+
+                    generateMindMapOnCanvas(child, childX, childY, level + 1, id);
+                });
+            }
+        }
+
+        // ================= 交互逻辑 =================
+        function handleMouseDown(e) {
+            if (e.target === textInput) return;
+            const sx = e.offsetX; const sy = e.offsetY;
+            const worldPos = toWorld(sx, sy);
+
+            state.lastX = sx; state.lastY = sy;
+            state.startX = worldPos.x; state.startY = worldPos.y;
+
+            if (state.tool === 'hand' || e.button === 1) {
+                state.isPanning = true; mainCanvas.style.cursor = 'grabbing'; return;
+            }
+
+            if (state.tool === 'select') {
+                if (state.selectedId && checkResizeHandle(sx, sy)) {
+                    state.isResizing = true;
+                    const obj = state.history.find(o => o.id === state.selectedId);
+                    if(obj) {
+                        const b = getBounds(obj);
+                        state.resizeStartDims = { w: b.w, h: b.h, fontSize: obj.fontSize || 16, x2: obj.x2, y2: obj.y2 };
+                    }
+                    return;
+                }
+                const hit = hitTest(worldPos.x, worldPos.y);
+                state.selectedId = hit;
+                if (hit) {
+                    if (Date.now() - state.lastClickTime < 300) startEditingText(state.history.find(o=>o.id===hit));
+                    state.lastClickTime = Date.now(); state.isDragging = true;
+                }
+                return;
+            }
+
+            if (state.tool === 'text_free') {
+                if (textInput.style.display === 'block') finalizeTextEntry();
+                else startTextInput(sx, sy, worldPos.x, worldPos.y);
+                return;
+            }
+
+            state.isDrawing = true;
+            state.pointsBuffer = [{x: worldPos.x, y: worldPos.y}];
+            
+            if (state.tool.startsWith('stamp_')) {
+                state.isDrawing = false;
+                setTimeout(() => {
+                    const t = prompt("节点名称:", "New Node");
+                    if (t) addAction({type: 'stamp', tool: state.tool, x: state.startX, y: state.startY, color: state.color, text: t, id: Date.now()+Math.random()});
+                }, 50);
+            }
+        }
+
+        function handleMouseMove(e) {
+            if (!state.isPanning && !state.isDragging && !state.isDrawing && !state.isResizing) return;
+            const sx = e.offsetX; const sy = e.offsetY;
+            const worldPos = toWorld(sx, sy);
+
+            if (state.isPanning) {
+                state.offsetX += sx - state.lastX; state.offsetY += sy - state.lastY;
+                state.lastX = sx; state.lastY = sy; return;
+            }
+
+            if (state.isResizing && state.selectedId) {
+                const dx = worldPos.x - state.startX; const dy = worldPos.y - state.startY;
+                const obj = state.history.find(o => o.id === state.selectedId);
+                if(obj) applyResize(obj, dx, dy);
+                return;
+            }
+
+            if (state.isDragging && state.selectedId) {
+                const dx = worldPos.x - state.startX; const dy = worldPos.y - state.startY;
+                moveObject(state.selectedId, dx, dy);
+                state.startX = worldPos.x; state.startY = worldPos.y; return;
+            }
+
+            if (state.isDrawing) {
+                if (state.tool === 'pencil' || state.tool === 'eraser') state.pointsBuffer.push({x: worldPos.x, y: worldPos.y});
+                state.currentEnd = {x: worldPos.x, y: worldPos.y};
+            }
+        }
+
+        function handleMouseUp() {
+            state.isPanning = false; state.isDragging = false;
+            if (state.tool === 'hand') mainCanvas.style.cursor = 'grab';
+            
+            if (state.isResizing) {
+                state.isResizing = false;
+                if(state.selectedId) emit('client-update', state.history.find(o=>o.id===state.selectedId));
+            } else if (state.isDrawing) {
+                state.isDrawing = false;
+                const end = state.currentEnd || {x: state.startX, y: state.startY};
+                if (state.tool === 'pencil' || state.tool === 'eraser') {
+                    if (state.pointsBuffer.length > 1) addAction({type: 'path', points: state.pointsBuffer, color: state.color, size: state.size, isEraser: state.tool === 'eraser', id: Date.now()+Math.random()});
+                } else if (!state.tool.startsWith('stamp')) {
+                    addAction({type: 'shape', tool: state.tool, x1: state.startX, y1: state.startY, x2: end.x, y2: end.y, color: state.color, size: state.size, id: Date.now()+Math.random()});
+                }
+                state.currentEnd = null;
+            } else if (state.selectedId && state.isDragging === false) {
+                 emit('client-update', state.history.find(o=>o.id===state.selectedId));
+            }
+        }
+
+        function handleWheel(e) {
+            e.preventDefault();
+            const delta = -e.deltaY * 0.001;
+            const newScale = Math.min(Math.max(0.1, state.scale + delta), 5);
+            const sx = e.offsetX; const sy = e.offsetY;
+            const wx = (sx - state.offsetX) / state.scale; const wy = (sy - state.offsetY) / state.scale;
+            state.offsetX = sx - wx * newScale; state.offsetY = sy - wy * newScale;
+            state.scale = newScale;
+            document.getElementById('zoomDisplay').innerText = Math.round(state.scale * 100) + '%';
+        }
+
+        // ================= 渲染引擎 =================
+        function renderLoop() {
+            const w = mainCanvas.width / state.dpr;
+            const h = mainCanvas.height / state.dpr;
+            ctx.clearRect(0, 0, w, h);
+            drawBackgroundOptimized(w, h);
+            ctx.save();
+            ctx.translate(state.offsetX, state.offsetY);
+            ctx.scale(state.scale, state.scale);
+            state.history.forEach(act => {
+                drawAction(act);
+                if (act.id === state.selectedId) drawSelectionBox(act);
+            });
+            if (state.isDrawing) {
+                if (state.tool === 'pencil' || state.tool === 'eraser') {
+                    ctx.beginPath();
+                    ctx.strokeStyle = state.color; ctx.lineWidth = state.size; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+                    if (state.pointsBuffer.length > 0) {
+                        ctx.moveTo(state.pointsBuffer[0].x, state.pointsBuffer[0].y);
+                        for(let i=1; i<state.pointsBuffer.length; i++) ctx.lineTo(state.pointsBuffer[i].x, state.pointsBuffer[i].y);
+                    }
+                    ctx.stroke();
+                } else if (state.currentEnd) {
+                    drawGeometry(state.tool, state.startX, state.startY, state.currentEnd.x, state.currentEnd.y, state.color, state.size);
+                }
+            }
+            ctx.restore();
+            requestAnimationFrame(renderLoop);
+        }
+
+        function drawBackgroundOptimized(w, h) {
+            ctx.fillStyle = state.theme === 'dark' ? '#1e1e1e' : '#fff'; ctx.fillRect(0, 0, w, h);
+            const t = state.currentTemplate; const gridSize = 40 * state.scale;
+            const startX = state.offsetX % gridSize; const startY = state.offsetY % gridSize;
+            ctx.beginPath(); ctx.lineWidth = 1; ctx.strokeStyle = state.theme === 'dark' ? '#333' : '#f0f0f0';
+            if (t === 'grid' || t === 'engineering') {
+                if (t === 'engineering') { ctx.strokeStyle = '#a3d1ff'; ctx.fillStyle = '#e3f2fd'; ctx.fillRect(0,0,w,h); }
+                for (let x = startX; x < w; x += gridSize) { ctx.moveTo(x, 0); ctx.lineTo(x, h); }
+                for (let y = startY; y < h; y += gridSize) { ctx.moveTo(0, y); ctx.lineTo(w, y); }
+                ctx.stroke();
+            } else if (t === 'dot') {
+                ctx.fillStyle = '#ccc';
+                for (let x = startX; x < w; x += gridSize) for (let y = startY; y < h; y += gridSize) ctx.rect(x-1, y-1, 2, 2);
+                ctx.fill();
+            } else if (t === 'mind') {
+                const cx = state.offsetX; const cy = state.offsetY;
+                ctx.beginPath(); ctx.arc(cx, cy, 60 * state.scale, 0, Math.PI*2);
+                ctx.fillStyle = state.theme==='dark'?'#333':'#f0f4ff'; ctx.fill(); ctx.stroke();
+                ctx.fillStyle = '#999'; ctx.font = `${14*state.scale}px 'Segoe UI'`; ctx.textAlign='center'; ctx.fillText("中心主题", cx, cy);
+            } else if (t === 'swot') {
+                const cx = state.offsetX; const cy = state.offsetY;
+                ctx.beginPath(); ctx.lineWidth = 2; ctx.strokeStyle = '#ccc';
+                ctx.moveTo(cx, 0); ctx.lineTo(cx, h); ctx.moveTo(0, cy); ctx.lineTo(w, cy); ctx.stroke();
+            }
+        }
+
+        function drawAction(act) {
+            ctx.save();
+            if (act.type === 'path') {
+                ctx.beginPath(); ctx.strokeStyle = act.color; ctx.lineWidth = act.size; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+                if (act.isEraser) ctx.globalCompositeOperation = 'destination-out';
+                if(act.points.length>0) {
+                    ctx.moveTo(act.points[0].x, act.points[0].y);
+                    for(let i=1; i<act.points.length; i++) ctx.lineTo(act.points[i].x, act.points[i].y);
+                }
+                ctx.stroke();
+            } else if (act.type === 'shape') {
+                drawGeometry(act.tool, act.x1, act.y1, act.x2, act.y2, act.color, act.size);
+            } else if (act.type === 'stamp') {
+                drawStamp(act);
+            } else if (act.type === 'text_free') {
+                ctx.fillStyle = act.color; ctx.font = `${act.fontSize}px 'Segoe UI'`; ctx.fillText(act.text, act.x, act.y);
+            } else if (act.type === 'image') {
+                if (!state.images[act.id]) { const i = new Image(); i.src = act.image; state.images[act.id] = i; }
+                const img = state.images[act.id];
+                if (img.complete) ctx.drawImage(img, act.x, act.y, act.w, act.h);
+            }
+            ctx.restore();
+        }
+
+        function drawGeometry(tool, x1, y1, x2, y2, color, size) {
+            ctx.beginPath(); ctx.strokeStyle = color; ctx.lineWidth = size;
+            const w = x2 - x1, h = y2 - y1;
+            const minX = Math.min(x1, x2), minY = Math.min(y1, y2), aw = Math.abs(w), ah = Math.abs(h);
+            const cx = minX + aw/2, cy = minY + ah/2;
+            
+            if (tool === 'line') { ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); }
+            else if (tool === 'arrow') {
+                 const a = Math.atan2(y2-y1, x2-x1), hd = 15+size;
+                 ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
+                 ctx.lineTo(x2-hd*Math.cos(a-Math.PI/6), y2-hd*Math.sin(a-Math.PI/6));
+                 ctx.moveTo(x2, y2); ctx.lineTo(x2-hd*Math.cos(a+Math.PI/6), y2-hd*Math.sin(a+Math.PI/6));
+            }
+            else if (tool === 'rect') ctx.rect(minX, minY, aw, ah);
+            else if (tool === 'circle') ctx.ellipse(cx, cy, aw/2, ah/2, 0, 0, Math.PI*2);
+            else if (tool === 'triangle') { ctx.moveTo(cx, minY); ctx.lineTo(minX+aw, minY+ah); ctx.lineTo(minX, minY+ah); ctx.closePath(); }
+            else if (tool === 'diamond') { ctx.moveTo(cx, minY); ctx.lineTo(minX+aw, cy); ctx.lineTo(cx, minY+ah); ctx.lineTo(minX, cy); ctx.closePath(); }
+            else if (tool === 'star') {
+                const r = Math.min(aw, ah)/2;
+                for(let i=0; i<5; i++) {
+                    const a = (18+i*72)/180*Math.PI; const x = cx + r*Math.cos(a); const y = cy - r*Math.sin(a);
+                    if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+                    const a2 = (54+i*72)/180*Math.PI; const x2 = cx + r/2.5*Math.cos(a2); const y2 = cy - r/2.5*Math.sin(a2);
+                    ctx.lineTo(x2,y2);
+                }
+                ctx.closePath();
+            }
+            else if (tool === 'hexagon') {
+                const r = Math.min(aw, ah)/2;
+                for(let i=0; i<6; i++) {
+                    const a = (i*60)/180*Math.PI; const x = cx + r*Math.cos(a); const y = cy + r*Math.sin(a);
+                    if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+                }
+                ctx.closePath();
+            }
+            ctx.stroke();
+        }
+
+        function drawStamp(act) {
+            ctx.font = "14px 'Segoe UI'"; const w = ctx.measureText(act.text).width + 30, h = 40;
+            const cx = act.x, cy = act.y;
+            ctx.lineWidth = 2; ctx.fillStyle = state.theme==='dark'?'#333':'#fff'; ctx.strokeStyle = act.color;
+            ctx.beginPath();
+            
+            if (act.tool === 'stamp_root') { ctx.ellipse(cx, cy, w/2, h/2, 0, 0, Math.PI*2); }
+            else if (act.tool === 'stamp_decision') { const dw=w+20; ctx.moveTo(cx, cy-h/2); ctx.lineTo(cx+dw/2, cy); ctx.lineTo(cx, cy+h/2); ctx.lineTo(cx-dw/2, cy); ctx.closePath(); }
+            else if (act.tool === 'stamp_data') { const s=15; ctx.moveTo(cx-w/2+s, cy-h/2); ctx.lineTo(cx+w/2+s, cy-h/2); ctx.lineTo(cx+w/2-s, cy+h/2); ctx.lineTo(cx-w/2-s, cy+h/2); ctx.closePath(); }
+            else if (act.tool === 'stamp_check') { ctx.font = "24px 'Segoe UI'"; ctx.fillStyle = act.color; ctx.fillText("✔ " + act.text, cx, cy); return; }
+            else ctx.rect(cx-w/2, cy-h/2, w, h);
+            
+            ctx.fill(); ctx.stroke();
+            if (act.tool === 'stamp_root') { ctx.fillStyle = act.color; ctx.fill(); ctx.fillStyle = '#fff'; }
+            else ctx.fillStyle = act.color;
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(act.text, cx, cy);
+        }
+
+        // ================= 辅助 & 网络 =================
+        function getBounds(act) {
+            if (act.type === 'text_free') { ctx.font = `${act.fontSize}px 'Segoe UI'`; const w = ctx.measureText(act.text).width; return {x: act.x, y: act.y - act.fontSize, w: w, h: act.fontSize * 1.2}; }
+            if (act.type === 'image') return {x: act.x, y: act.y, w: act.w, h: act.h};
+            if (act.type === 'shape') { const minX = Math.min(act.x1, act.x2), minY = Math.min(act.y1, act.y2); return {x: minX, y: minY, w: Math.abs(act.x2-act.x1), h: Math.abs(act.y2-act.y1)}; }
+            if (act.type === 'stamp') { 
+                ctx.font = "14px 'Segoe UI'"; const w = ctx.measureText(act.text).width+30; 
+                const realW = act.tool === 'stamp_decision' ? w+20 : w;
+                return {x: act.x-realW/2, y: act.y-20, w: realW, h: 40}; 
+            }
+            if (act.type === 'path' && act.points.length > 0) {
+                let minX=Infinity, minY=Infinity, maxX=-Infinity, maxY=-Infinity;
+                for(let p of act.points) { minX=Math.min(minX,p.x); minY=Math.min(minY,p.y); maxX=Math.max(maxX,p.x); maxY=Math.max(maxY,p.y); }
+                const pad = Math.max(5, act.size);
+                return {x: minX-pad, y: minY-pad, w: maxX-minX+pad*2, h: maxY-minY+pad*2};
+            }
+            return null;
+        }
+
+        function hitTest(x, y) {
+            for (let i = state.history.length - 1; i >= 0; i--) {
+                const act = state.history[i];
+                const b = getBounds(act);
+                if (b && x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) {
+                    if (act.type === 'path') { if (isPointNearPath(x, y, act.points, Math.max(5, act.size * 1.5))) return act.id; }
+                    else return act.id;
+                }
+            }
+            return null;
+        }
+
+        function isPointNearPath(x, y, points, threshold) {
+            if (points.length < 2) return false;
+            for (let i = 0; i < points.length - 1; i++) {
+                const p1 = points[i], p2 = points[i+1];
+                const dist = distToSegment(x, y, p1.x, p1.y, p2.x, p2.y);
+                if (dist < threshold) return true;
+            }
+            return false;
+        }
+        function distToSegment(px, py, x1, y1, x2, y2) {
+            const l2 = (x2-x1)*(x2-x1) + (y2-y1)*(y2-y1);
+            if (l2 === 0) return Math.hypot(px-x1, py-y1);
+            let t = ((px-x1)*(x2-x1) + (py-y1)*(y2-y1)) / l2;
+            t = Math.max(0, Math.min(1, t));
+            return Math.hypot(px - (x1 + t*(x2-x1)), py - (y1 + t*(y2-y1)));
+        }
+
+        function drawSelectionBox(act) {
+            const b = getBounds(act); if (!b) return;
+            ctx.save();
+            ctx.strokeStyle = '#2196f3'; ctx.lineWidth = 1/state.scale; ctx.setLineDash([5/state.scale, 5/state.scale]);
+            ctx.strokeRect(b.x - 5/state.scale, b.y - 5/state.scale, b.w + 10/state.scale, b.h + 10/state.scale);
+            if(act.type !== 'stamp' && act.type !== 'path') {
+                ctx.setLineDash([]); ctx.fillStyle = '#2196f3'; const s = 8/state.scale;
+                ctx.fillRect(b.x + b.w + 5/state.scale - s/2, b.y + b.h + 5/state.scale - s/2, s, s);
+            }
+            ctx.restore();
+        }
+
+        function checkResizeHandle(sx, sy) {
+            const obj = state.history.find(o => o.id === state.selectedId); if (!obj) return false;
+            if (obj.type === 'path') return false; 
+            const b = getBounds(obj); if (!b) return false;
+            const screenPos = toScreen(b.x + b.w, b.y + b.h);
+            return Math.hypot(sx - screenPos.x, sy - screenPos.y) < 15;
+        }
+
+        function applyResize(obj, dx, dy) {
+            const init = state.resizeStartDims;
+            if (obj.type === 'text_free') { const scale = 1 + dx / 100; obj.fontSize = Math.max(10, init.fontSize * scale); }
+            else if (obj.type === 'image' || obj.type === 'rect') { obj.w = Math.max(10, init.w + dx); obj.h = Math.max(10, init.h + dy); }
+            else if (obj.type === 'shape') { obj.x2 = Math.max(obj.x1 + 10, init.x2 + dx); obj.y2 = Math.max(obj.y1 + 10, init.y2 + dy); }
+        }
+
+        function addAction(a) { state.history.push(a); state.redoStack=[]; emit('client-draw', a); }
+        function moveObject(id, dx, dy) {
+            const o = state.history.find(x=>x.id===id); if(!o) return;
+            if(o.x!==undefined) o.x+=dx; if(o.y!==undefined) o.y+=dy;
+            if(o.x1!==undefined) {o.x1+=dx; o.x2+=dx;} if(o.y1!==undefined) {o.y1+=dy; o.y2+=dy;}
+            if(o.points) o.points.forEach(p=>{p.x+=dx; p.y+=dy;});
+        }
+        function historyUndo() { if(state.history.length) { const a=state.history.pop(); state.redoStack.push(a); emit('client-delete', {id:a.id}); }}
+        function historyRedo() { if(state.redoStack.length) { const a=state.redoStack.pop(); state.history.push(a); emit('client-draw', a); }}
+        function clearBoard() { if(confirm('清空?')) { state.history=[]; emit('client-clear', {}); }}
+        function toggleTheme() { state.theme = state.theme==='light'?'dark':'light'; document.documentElement.setAttribute('data-theme', state.theme); }
+        function copyLink() { navigator.clipboard.writeText(window.location.href); alert('链接已复制'); }
+        function exportImage() { const a=document.createElement('a'); a.download=`Board-${Date.now()}.png`; a.href=mainCanvas.toDataURL(); a.click(); }
+        function showHelpModal() { document.getElementById('helpModal').style.display='flex'; }
+        function showTemplateModal() { document.getElementById('tplModal').style.display='flex'; }
+        function showAIModal() { document.getElementById('aiModal').style.display='flex'; }
+        function closeAllModals() { document.querySelectorAll('.modal-overlay').forEach(el => el.style.display = 'none'); }
+        
+        function handleKeyDown(e) { 
+            if(e.target === textInput || e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+            if((e.ctrlKey||e.metaKey)&&e.key==='z'){e.preventDefault();historyUndo();}
+            if((e.ctrlKey||e.metaKey)&&e.key==='y'){e.preventDefault();historyRedo();}
+            if((e.key==='Delete' || e.key==='Backspace') && state.selectedId){ 
+                const id=state.selectedId; state.selectedId=null; 
+                const idx=state.history.findIndex(x=>x.id===id); if(idx!==-1){state.history.splice(idx,1); emit('client-delete',{id});}
+            }
+        }
+        function startTextInput(sx, sy, wx, wy) {
+            textInput.style.display = 'block'; textInput.style.left = sx + 'px'; textInput.style.top = sy + 'px';
+            textInput.style.fontSize = (state.size * 2 + 14) + 'px'; textInput.style.color = state.color; textInput.value = '';
+            setTimeout(() => textInput.focus(), 10); state.textCoords = {x: wx, y: wy};
+        }
+        function startEditingText(obj) {
+            const sp = toScreen(obj.x, obj.y);
+            textInput.style.display = 'block'; textInput.style.left = sp.x + 'px'; textInput.style.top = sp.y + 'px';
+            textInput.value = obj.text; textInput.style.color = obj.color; state.editingId = obj.id;
+            setTimeout(() => textInput.focus(), 10);
+        }
+        function finalizeTextEntry() {
+            if (textInput.style.display === 'none') return;
+            const t = textInput.value.trim();
+            if (state.editingId) {
+                const o = state.history.find(x=>x.id===state.editingId);
+                if(o && t) { o.text=t; emit('client-update', o); } else if(!t) { const i=state.history.findIndex(x=>x.id===state.editingId); state.history.splice(i,1); emit('client-delete', {id:state.editingId}); }
+                state.editingId = null;
+            } else if (t) addAction({type: 'text_free', text: t, x: state.textCoords.x, y: state.textCoords.y, color: state.color, fontSize: 16, id: Date.now()});
+            textInput.style.display = 'none'; textInput.value = '';
+        }
+        function handleImageUpload(input) {
+            const f = input.files[0]; if (!f) return;
+            const r = new FileReader();
+            r.onload = e => { const i = new Image(); i.onload = () => {
+                const max = 800; let w=i.width, h=i.height; if(w>max||h>max){const s=Math.min(max/w,max/h);w*=s;h*=s;}
+                const c = document.createElement('canvas'); c.width=w; c.height=h; c.getContext('2d').drawImage(i,0,0,w,h);
+                const pos = toWorld(mainCanvas.width/2-w/2, mainCanvas.height/2-h/2);
+                addAction({type: 'image', image: c.toDataURL('image/jpeg', 0.6), x: pos.x, y: pos.y, w: w, h: h, id: Date.now()});
+            }; i.src = e.target.result; }; r.readAsDataURL(f); input.value = '';
+        }
+        
+        function initUI() {
+            const p = document.getElementById('colorPalette');
+            COLORS.forEach(c => { const d=document.createElement('div'); d.className='color-dot'; d.style.background=c; d.onclick=()=>{document.querySelectorAll('.color-dot').forEach(x=>x.classList.remove('active')); d.classList.add('active'); state.color=c;}; p.appendChild(d); });
+            const tg = document.getElementById('tplGrid');
+            TEMPLATES.forEach(t => { const d=document.createElement('div'); d.className='tpl-card'; d.innerHTML=`<i class="${t.icon}"></i> <span>${t.name}</span>`; d.onclick=()=>{state.currentTemplate=t.id; document.getElementById('tplModal').style.display='none';}; tg.appendChild(d); });
+            document.getElementById('sizeSlider').oninput = e => state.size = e.target.value;
+        }
+        function initPusher() {
+            state.pusher = new Pusher(PUSHER_CONFIG.key, { cluster: PUSHER_CONFIG.cluster, authorizer: (c, o) => ({ authorize: (s, cb) => cb(null, { auth: PUSHER_CONFIG.key + ":" + CryptoJS.HmacSHA256(s + ":" + c.name, PUSHER_CONFIG.secret).toString(CryptoJS.enc.Hex) }) }) });
+            state.channel = state.pusher.subscribe(PUSHER_CONFIG.channel);
+            const s = document.getElementById('statusText');
+            state.channel.bind('pusher:subscription_succeeded', () => s.innerText = '● 在线');
+            state.channel.bind('client-draw', d => { if(d.sender!==state.userId) state.history.push(d); });
+            state.channel.bind('client-delete', d => { const i=state.history.findIndex(x=>x.id===d.id); if(i!==-1) state.history.splice(i,1); });
+            state.channel.bind('client-update', d => { const i=state.history.findIndex(x=>x.id===d.id); if(i!==-1) state.history[i]=d; });
+            state.channel.bind('client-clear', () => state.history=[]);
+        }
+        function emit(e, d) { if(state.channel && state.channel.subscribed) { d.sender = state.userId; state.channel.trigger(e, d); } }
+        function setTool(t, btn) { state.tool=t; state.selectedId=null; document.querySelectorAll('.btn-tool').forEach(b=>b.classList.remove('active')); if(btn) btn.classList.add('active'); mainCanvas.style.cursor = t==='hand'?'grab':(t==='select'?'default':'crosshair'); }
+        function showTemplateModal() { document.getElementById('tplModal').style.display='flex'; }
+        function showHelpModal() { document.getElementById('helpModal').style.display='flex'; }
+        function showAIModal() { document.getElementById('aiModal').style.display='flex'; }
+        function closeAllModals() { document.querySelectorAll('.modal-overlay').forEach(el => el.style.display = 'none'); }
+    </script>
+</body>
+</html>
