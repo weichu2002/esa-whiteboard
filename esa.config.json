@@ -1,0 +1,22 @@
+{
+  "functions": {
+    "ai": {
+      "handler": "./functions/ai.js",
+      "methods": ["POST", "OPTIONS"]
+    }
+  },
+  "routes": [
+    {
+      "pattern": "/",
+      "file": "./index.html"
+    },
+    {
+      "pattern": "/ai",
+      "function": "ai"
+    },
+    {
+      "pattern": "/api/ai",
+      "function": "ai"
+    }
+  ]
+}
