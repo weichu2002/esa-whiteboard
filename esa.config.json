@@ -1,0 +1,14 @@
+{
+    "entry": ".",
+    "functions": "functions",
+    "routes": [
+        {
+            "entry": "index.html",
+            "route": "/"
+        },
+        {
+            "entry": "ai.js",
+            "route": "/ai"
+        }
+    ]
+}
