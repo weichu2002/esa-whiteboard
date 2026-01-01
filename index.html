@@ -85,9 +85,24 @@
         .ai-mode-tabs { display: flex; gap: 10px; margin-bottom: 15px; }
         .ai-tab { flex: 1; padding: 8px; border: 1px solid var(--border); text-align: center; border-radius: 6px; cursor: pointer; font-size: 0.9rem; }
         .ai-tab.active { background: var(--tool-active); color: var(--primary); border-color: var(--primary); font-weight: bold; }
+        
+        /* 部署状态指示器 */
+        .deploy-badge {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            z-index: 1000;
+        }
     </style>
 </head>
 <body>
+    <div class="deploy-badge" id="deployBadge">检测部署平台...</div>
+    
     <header>
         <h3><i class="fas fa-brain"></i> ESA AI Agent <small style="font-size: 0.6em; opacity: 0.8;">V7.0</small></h3>
         <div>
@@ -212,6 +227,7 @@
             </button>
             
             <div id="aiError" style="display:none; margin-top: 15px; color: #f44336; font-size: 0.9rem; background: #fff0f0; padding: 10px; border-radius: 6px;"></div>
+            <div id="apiInfo" style="margin-top: 10px; font-size: 0.8rem; color: #666;"></div>
             <div class="ai-disclaimer">Powered by DeepSeek-V3 (JSON & SVG Mode)</div>
         </div>
     </div>
@@ -243,6 +259,42 @@
             {id: 'swot', name: 'SWOT四象限', icon: 'fas fa-th-large'}
         ];
 
+        // ================= 部署平台检测 =================
+        let currentPlatform = 'unknown';
+        let apiEndpoint = '/api/ai'; // 默认使用 Vercel 的 API 路径
+        
+        function detectPlatform() {
+            const hostname = window.location.hostname;
+            
+            if (hostname.includes('.pages.cn') || hostname.includes('.aliyun')) {
+                currentPlatform = '阿里云 ESA';
+                apiEndpoint = '/ai'; // 阿里云使用 /ai 路径
+                document.getElementById('deployBadge').innerHTML = '阿里云 ESA 部署';
+                document.getElementById('deployBadge').style.background = '#ff6a00';
+            } else if (hostname.includes('.vercel.app') || hostname.includes('.vercel.app')) {
+                currentPlatform = 'Vercel';
+                apiEndpoint = '/api/ai'; // Vercel 使用 /api/ai 路径
+                document.getElementById('deployBadge').innerHTML = 'Vercel 部署';
+                document.getElementById('deployBadge').style.background = '#000000';
+            } else if (hostname === 'localhost' || hostname === '127.0.0.1') {
+                currentPlatform = '本地开发';
+                apiEndpoint = 'http://localhost:3000/api/ai'; // 本地开发
+                document.getElementById('deployBadge').innerHTML = '本地开发';
+                document.getElementById('deployBadge').style.background = '#4caf50';
+            } else {
+                currentPlatform = '未知平台';
+                // 尝试自动检测，先试 /api/ai，再试 /ai
+                document.getElementById('deployBadge').innerHTML = '未知部署';
+                document.getElementById('deployBadge').style.background = '#666';
+            }
+            
+            // 更新 API 信息显示
+            document.getElementById('apiInfo').innerHTML = 
+                `当前平台: ${currentPlatform} | API端点: ${apiEndpoint}`;
+            
+            console.log(`检测到平台: ${currentPlatform}, API端点: ${apiEndpoint}`);
+        }
+
         // ================= 核心状态 =================
         const state = {
             userId: 'u_' + Math.floor(Math.random() * 99999),
@@ -262,6 +314,9 @@
 
         // ================= 初始化 =================
         window.onload = () => {
+            // 先检测部署平台
+            detectPlatform();
+            
             initUI();
             initPusher();
             resizeCanvas();
@@ -289,7 +344,7 @@
         function toWorld(sx, sy) { return { x: (sx - state.offsetX) / state.scale, y: (sy - state.offsetY) / state.scale }; }
         function toScreen(wx, wy) { return { x: wx * state.scale + state.offsetX, y: wy * state.scale + state.offsetY }; }
 
-        // ================= V7.0 AI 深度融合逻辑 (安全模式) =================
+        // ================= V7.0 AI 深度融合逻辑 (双平台兼容) =================
         function switchAIMode(mode) {
             state.aiMode = mode;
             document.querySelectorAll('.ai-tab').forEach(el => el.classList.remove('active'));
@@ -329,8 +384,19 @@
 5. 不要返回任何 Markdown 标记，只返回 SVG 代码字符串。`;
                 }
 
-                // 修改点：使用 /api/ai 而不是 /ai
-                const response = await fetch("/api/ai", {
+                console.log(`正在请求 API: ${apiEndpoint}`);
+                console.log(`请求体:`, {
+                    model: "deepseek-v3",
+                    messages: [
+                        { role: "system", content: systemPrompt },
+                        { role: "user", content: prompt }
+                    ],
+                    stream: false,
+                    temperature: 0.7,
+                    max_tokens: 2000
+                });
+
+                const response = await fetch(apiEndpoint, {
                     method: "POST",
                     headers: { 
                         "Content-Type": "application/json",
@@ -348,26 +414,31 @@
                     })
                 });
 
+                console.log(`API 响应状态: ${response.status}`);
+
                 if (!response.ok) {
                     let errText = "";
                     try {
                         errText = await response.text();
                     } catch {
-                        errText = "请求失败，状态码：" + response.status;
+                        errText = `请求失败，状态码：${response.status}`;
                     }
                     throw new Error(errText);
                 }
 
                 const data = await response.json();
+                console.log("API 响应数据:", data);
                 
                 // DeepSeek 的响应结构可能需要调整
                 let content = data.choices?.[0]?.message?.content || 
                               data.output?.choices?.[0]?.message?.content ||
                               data.result?.output?.text ||
+                              data.content ||
                               "";
                 
                 if (!content) {
-                    throw new Error("AI 返回了空内容");
+                    console.error("API 返回空内容:", data);
+                    throw new Error("AI 返回了空内容，请重试。");
                 }
                 
                 content = content.trim();
@@ -384,10 +455,15 @@
                         const mindMapData = JSON.parse(content);
                         generateMindMapOnCanvas(mindMapData.root, centerWorld.x, centerWorld.y);
                     } catch (e) {
+                        console.error("JSON 解析错误:", e);
+                        console.error("原始内容:", content);
                         throw new Error("DeepSeek 生成的 JSON 格式有误：" + e.message);
                     }
                 } else {
-                    if (content.indexOf('<svg') === -1) throw new Error("AI 未返回有效的 SVG 代码");
+                    if (content.indexOf('<svg') === -1) {
+                        console.error("SVG 内容无效:", content);
+                        throw new Error("AI 未返回有效的 SVG 代码");
+                    }
                     const svgBase64 = "data:image/svg+xml;base64," + btoa(unescape(encodeURIComponent(content)));
                     addAction({
                         type: 'image', image: svgBase64,
@@ -400,11 +476,44 @@
 
             } catch (err) {
                 console.error("AI 请求失败:", err);
-                errorEl.innerText = "执行失败: " + err.message;
+                errorEl.innerText = `执行失败 (${currentPlatform}): ${err.message}`;
                 errorEl.style.display = 'block';
+                
+                // 如果失败，尝试备用端点（仅对未知平台）
+                if (currentPlatform === '未知平台') {
+                    errorEl.innerText += ' 正在尝试备用端点...';
+                    tryAlternativeEndpoint(prompt);
+                }
             } finally {
                 btn.disabled = false; 
                 spinner.style.display = 'none';
+            }
+        }
+
+        // 备用端点尝试（仅用于未知平台）
+        async function tryAlternativeEndpoint(prompt) {
+            const alternativeEndpoint = apiEndpoint === '/api/ai' ? '/ai' : '/api/ai';
+            console.log(`尝试备用端点: ${alternativeEndpoint}`);
+            
+            try {
+                const response = await fetch(alternativeEndpoint, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        model: "deepseek-v3",
+                        messages: [{ role: "user", content: prompt }],
+                        stream: false
+                    })
+                });
+                
+                if (response.ok) {
+                    console.log("备用端点成功!");
+                    // 更新当前端点
+                    apiEndpoint = alternativeEndpoint;
+                    document.getElementById('apiInfo').innerHTML += ` (已切换到备用端点)`;
+                }
+            } catch (e) {
+                console.log("备用端点也失败:", e);
             }
         }
 
@@ -426,7 +535,19 @@
 
             // 绘制连线 (如果有父节点)
             if (parentId) {
-                // 简单的连线逻辑
+                const parentObj = state.history.find(o => o.id === parentId);
+                if (parentObj) {
+                    const parentScreen = toScreen(parentObj.x, parentObj.y);
+                    const childScreen = toScreen(x, y);
+                    
+                    // 绘制连接线
+                    addAction({
+                        type: 'shape', tool: 'line',
+                        x1: parentObj.x, y1: parentObj.y + 20,
+                        x2: x, y2: y - 20,
+                        color: '#ccc', size: 2, id: Date.now() + Math.random()
+                    });
+                }
             }
 
             if (node.children && node.children.length > 0) {
