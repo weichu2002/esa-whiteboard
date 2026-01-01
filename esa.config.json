@@ -1,5 +1,5 @@
 {
-    "entry": ".",
+    "entry": "/",
     "functions": "functions",
     "routes": [
         {
