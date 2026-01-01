@@ -1,13 +1,19 @@
 {
-    "entry": ".",
-    "routes": [
-        {
-            "entry": "static/index.html",
-            "route": "/"
-        },
-        {
-            "entry": "functions/ai.js",
-            "route": "/ai"
-        }
-    ]
+  "entry": ".",
+  "functions": {
+    "ai": {
+      "handler": "./functions/ai.js",
+      "methods": ["POST"]
+    }
+  },
+  "routes": [
+    {
+      "pattern": "/",
+      "file": "./static/index.html"
+    },
+    {
+      "pattern": "/ai",
+      "function": "ai"
+    }
+  ]
 }
