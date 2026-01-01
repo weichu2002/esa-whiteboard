@@ -1,8 +1,8 @@
 {
-    "entry": "static",
+    "entry": ".",
     "routes": [
         {
-            "entry": "index.html",
+            "entry": "static/index.html",
             "route": "/"
         },
         {
