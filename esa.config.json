@@ -1,13 +1,12 @@
 {
     "entry": "static",
-    "functions": "functions",
     "routes": [
         {
             "entry": "index.html",
             "route": "/"
         },
         {
-            "entry": "ai.js",
+            "entry": "functions/ai.js",
             "route": "/ai"
         }
     ]
